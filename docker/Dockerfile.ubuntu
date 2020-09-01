@@ -1,0 +1,57 @@
+FROM ubuntu:18.04
+
+WORKDIR /tmp
+
+RUN apt update && apt -y install curl build-essential gfortran libxm4 libmotif-dev libxt6
+
+ENV PATH="/root/miniconda3/bin:${PATH}"
+RUN curl -O https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh \
+    && mkdir /root/.conda \
+    && bash Miniconda3-latest-Linux-x86_64.sh -b \
+    && rm -f Miniconda3-latest-Linux-x86_64.sh 
+
+RUN conda install -y python=3.6
+RUN conda install -y cython gdal git h5py libgdal pytest numpy fftw scipy basemap scons opencv
+
+COPY . /tmp/isce2
+
+# override system libuuid into conda env to link in libXm and libXt
+RUN cd /root/miniconda3/lib \
+ && unlink libuuid.so \
+ && unlink libuuid.so.1 \
+ && ln -s /lib/x86_64-linux-gnu/libuuid.so.1.3.0 libuuid.so \
+ && ln -s /lib/x86_64-linux-gnu/libuuid.so.1.3.0 libuuid.so.1
+
+# Install ISCE and remove files from /tmp folder
+ENV ISCE_BUILD_ROOT /tmp/isce2
+ENV ISCE_INSTALL_ROOT /opt/isce2
+ENV SCONS_CONFIG_DIR ${ISCE_BUILD_ROOT}/configuration
+
+RUN cd ${ISCE_BUILD_ROOT} && \
+    scons install --skipcheck && \
+    rm -rf /tmp/*
+
+# Setup ISCE environment
+ENV ISCE_ROOT /opt/isce2
+ENV ISCE_HOME $ISCE_ROOT/isce
+ENV PATH $ISCE_HOME/bin:$ISCE_HOME/applications:$PATH
+ENV PYTHONPATH $ISCE_ROOT:$ISCE_HOME/applications:$ISCE_HOME/component
+
+# Install gosu for a better su+exec command
+# ARG GOSU_VERSION=1.10
+# RUN curl -o /usr/local/bin/gosu -SL "https://github.com/tianon/gosu/releases/download/1.10/gosu-amd64" \
+#     && chmod +x /usr/local/bin/gosu
+#     # && ./gosu nobody true
+
+# COPY gosu.sh /usr/local/bin/gosu.sh
+# RUN chmod +x /usr/local/bin/gosu.sh
+
+# WORKDIR /home/workdir
+
+# ENTRYPOINT ["/usr/local/bin/gosu.sh", "bash"]
+
+# Don't run container as root user
+# RUN groupadd -r ubuntu && \
+#     useradd -r -l -s /bin/bash -g ubuntu ubuntu
+# USER ubuntu
+WORKDIR /home/workspace
